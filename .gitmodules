@@ -1,0 +1,4 @@
+[submodule "third_party/FreeCAD"]
+	path = third_party/FreeCAD
+	url = https://github.com/FreeCAD/FreeCAD.git
+	branch = main
