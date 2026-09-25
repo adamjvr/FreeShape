@@ -177,6 +177,47 @@ QString DesignSystem::applicationStyleSheet()
             border-radius: 4px;
         }
 
+
+
+        QFrame#SelectOtherPopup, QFrame#CommandSearch {
+            background: #ffffff;
+            border: 1px solid #9ea7af;
+            border-radius: 4px;
+        }
+
+        QLabel#PopupHeading, QLabel#MeasurementTitle {
+            font-weight: 700;
+            font-size: 12px;
+        }
+
+        QLabel#PopupHint {
+            color: #70777d;
+            font-size: 10px;
+        }
+
+        QFrame#MeasurementHud {
+            background: rgba(255,255,255,242);
+            border: 1px solid #b8bec4;
+            border-radius: 4px;
+        }
+
+        QLabel#ReferencePlaneLabel {
+            background: rgba(255,255,255,205);
+            color: #3577b3;
+            border: 1px solid rgba(88,144,192,145);
+            border-radius: 3px;
+            padding: 2px 5px;
+            font-weight: 600;
+        }
+
+        QSplitter::handle {
+            background: #bfc3c6;
+        }
+
+        QSplitter::handle:vertical {
+            height: 6px;
+        }
+
         QLabel#ViewportToast {
             background: rgba(43, 49, 55, 220);
             color: #ffffff;

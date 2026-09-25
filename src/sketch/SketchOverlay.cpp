@@ -27,6 +27,43 @@ void SketchOverlay::setCirclePreview(
     edge_ = edge;
     snapX_ = snapX;
     snapY_ = snapY;
+    previewKind_ = PreviewKind::Circle;
+    previewVisible_ = true;
+    show();
+    raise();
+    update();
+}
+
+void SketchOverlay::setLinePreview(
+    const QPoint& start,
+    const QPoint& end,
+    bool snapX,
+    bool snapY
+)
+{
+    center_ = start;
+    edge_ = end;
+    snapX_ = snapX;
+    snapY_ = snapY;
+    previewKind_ = PreviewKind::Line;
+    previewVisible_ = true;
+    show();
+    raise();
+    update();
+}
+
+void SketchOverlay::setRectanglePreview(
+    const QPoint& first,
+    const QPoint& opposite,
+    bool snapX,
+    bool snapY
+)
+{
+    center_ = first;
+    edge_ = opposite;
+    snapX_ = snapX;
+    snapY_ = snapY;
+    previewKind_ = PreviewKind::Rectangle;
     previewVisible_ = true;
     show();
     raise();
@@ -35,6 +72,7 @@ void SketchOverlay::setCirclePreview(
 
 void SketchOverlay::clearPreview()
 {
+    previewKind_ = PreviewKind::None;
     previewVisible_ = false;
     hide();
     update();
@@ -59,7 +97,20 @@ void SketchOverlay::paintEvent(QPaintEvent* event)
     geometryPen.setWidthF(1.6);
     painter.setPen(geometryPen);
     painter.setBrush(Qt::NoBrush);
-    painter.drawEllipse(QPointF(center_), radius, radius);
+
+    switch (previewKind_) {
+        case PreviewKind::Circle:
+            painter.drawEllipse(QPointF(center_), radius, radius);
+            break;
+        case PreviewKind::Line:
+            painter.drawLine(center_, edge_);
+            break;
+        case PreviewKind::Rectangle:
+            painter.drawRect(QRect(center_, edge_).normalized());
+            break;
+        case PreviewKind::None:
+            break;
+    }
 
     QPen centerPen(QColor(28, 95, 151));
     centerPen.setWidthF(1.2);

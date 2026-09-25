@@ -136,3 +136,12 @@ Required behavior:
 - feature/part filters;
 - suppression/error/warning state;
 - independently sized Features and Parts regions.
+
+
+## v0.4 implementation checkpoint
+
+The interaction contract now has concrete implementation for hover/preselection,
+selection-count feedback, directional box selection, Ctrl-box subtraction,
+Select Other candidate UI, measurement HUD, movable/resizable dialogs, and the
+first Line/Corner Rectangle sketch tools. Remaining work should deepen these
+systems rather than bypassing them with FreeCAD-visible commands.

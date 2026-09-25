@@ -4,11 +4,14 @@
 
 #include <QString>
 #include <QFrame>
+#include <QPoint>
 
 class QComboBox;
+class QMouseEvent;
 class QDoubleSpinBox;
 class QLabel;
 class QStackedWidget;
+class QSizeGrip;
 
 namespace freeshape::ui {
 
@@ -29,10 +32,16 @@ public:
     void setSelectionText(const QString& text);
     void setDepth(double value);
     double depth() const;
+    void focusPrimaryField();
 
     void setAcceptHandler(std::function<void()> handler);
     void setCancelHandler(std::function<void()> handler);
     void setDepthChangedHandler(std::function<void(double)> handler);
+
+protected:
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
 
 private:
     void buildUi();
@@ -47,6 +56,9 @@ private:
     QWidget* filletPage_ = nullptr;
     QDoubleSpinBox* depth_ = nullptr;
     QDoubleSpinBox* radius_ = nullptr;
+    QSizeGrip* sizeGrip_ = nullptr;
+    QPoint dragOffset_;
+    bool dragging_ = false;
 
     std::function<void()> accept_;
     std::function<void()> cancel_;

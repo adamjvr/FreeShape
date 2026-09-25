@@ -51,3 +51,22 @@ UX Big Pass 3:
 8. arbitrary-face Normal To;
 9. real rollback/history controller;
 10. native FeatureService replacing Python bootstrap snippets.
+
+
+## Full Send UX v0.4.0
+
+Added in one integrated interaction pass:
+
+- first-class hover/preselection presentation;
+- selection-count HUD;
+- left→right window and right→left crossing box selection;
+- Ctrl+box subtraction;
+- cursor-local Select Other popup with forward/back cycling and Enter acceptance;
+- automatic bottom-right measurement HUD;
+- movable/resizable feature dialogs;
+- independently resizable Feature/Parts panel regions;
+- custom semantic Top/Front/Right viewport labels while retaining FreeCAD plane pick targets;
+- compact/contextual toolbar presentation;
+- real Line and Corner Rectangle sketch-tool first slices;
+- shared sketch inference policy with Shift suppression;
+- updated roadmap and verification markers.

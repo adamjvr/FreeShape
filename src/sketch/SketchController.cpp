@@ -19,6 +19,7 @@
 #include <Inventor/nodes/SoCamera.h>
 
 #include <QLineEdit>
+#include <QApplication>
 #include <QTimer>
 #include <QWidget>
 
@@ -86,6 +87,7 @@ void SketchController::beginSketch()
     tool_ = Tool::None;
     geometryCount_ = 0;
     circleCenter_.reset();
+    firstPoint_.reset();
     overlay_->clearPreview();
     numericInput_->hide();
 
@@ -161,12 +163,51 @@ void SketchController::activateCircle()
     emitMessage(QStringLiteral("Circle · click center, then click radius"));
 }
 
+void SketchController::activateLine()
+{
+    if (state_ != State::Editing) {
+        emitMessage(QStringLiteral("Line requires an active sketch"));
+        return;
+    }
+
+    tool_ = Tool::Line;
+    firstPoint_.reset();
+    overlay_->clearPreview();
+    numericInput_->hide();
+    emitMessage(QStringLiteral("Line · click start, then click end"));
+}
+
+void SketchController::activateCornerRectangle()
+{
+    if (state_ != State::Editing) {
+        emitMessage(QStringLiteral("Rectangle requires an active sketch"));
+        return;
+    }
+
+    tool_ = Tool::CornerRectangle;
+    firstPoint_.reset();
+    overlay_->clearPreview();
+    numericInput_->hide();
+    emitMessage(QStringLiteral("Corner rectangle · click first corner, then opposite corner"));
+}
+
+void SketchController::cancelActiveTool()
+{
+    circleCenter_.reset();
+    firstPoint_.reset();
+    overlay_->clearPreview();
+    numericInput_->hide();
+    pendingDiameterGeometry_ = -1;
+    tool_ = Tool::None;
+    emitMessage(QStringLiteral("Sketch tool cancelled"));
+}
+
 bool SketchController::handleMousePress(
     const QPoint& viewportPosition,
     Qt::MouseButton button
 )
 {
-    if (state_ != State::Editing || tool_ != Tool::Circle
+    if (state_ != State::Editing || tool_ == Tool::None
         || button != Qt::LeftButton) {
         return false;
     }
@@ -178,77 +219,126 @@ bool SketchController::handleMousePress(
         return true;
     }
 
-    if (!circleCenter_.has_value()) {
-        bool snapX = false;
-        bool snapY = false;
-        const QPointF inferred = applyInference(*point, &snapX, &snapY);
+    bool snapX = false;
+    bool snapY = false;
+    const QPointF inferred = applyInference(*point, &snapX, &snapY);
 
-        circleCenter_ = inferred;
-        circleCenterScreen_ = viewportPosition;
+    if (tool_ == Tool::Circle) {
+        if (!circleCenter_.has_value()) {
+            circleCenter_ = inferred;
+            circleCenterScreen_ = viewportPosition;
+            centerSnapX_ = snapX;
+            centerSnapY_ = snapY;
+            overlay_->setCirclePreview(
+                circleCenterScreen_,
+                circleCenterScreen_,
+                centerSnapX_,
+                centerSnapY_
+            );
+            emitMessage(
+                snapX && snapY
+                    ? QStringLiteral("Circle center · coincident with Origin")
+                    : QStringLiteral("Circle center set · click radius")
+            );
+            return true;
+        }
+
+        const QPointF center = *circleCenter_;
+        const double radius = std::hypot(inferred.x() - center.x(), inferred.y() - center.y());
+        if (radius < 1.0e-6) {
+            emitMessage(QStringLiteral("Circle radius is too small"));
+            return true;
+        }
+
+        const int geoId = createCircle(center, radius);
+        if (geoId >= 0) {
+            ++geometryCount_;
+            promptDiameter(geoId, radius * 2.0, viewportPosition);
+            emitChanged();
+        }
+        circleCenter_.reset();
+        overlay_->clearPreview();
+        emitMessage(QStringLiteral("Circle created · type diameter + Enter, or draw another"));
+        return true;
+    }
+
+    if (!firstPoint_.has_value()) {
+        firstPoint_ = inferred;
+        firstPointScreen_ = viewportPosition;
         centerSnapX_ = snapX;
         centerSnapY_ = snapY;
-
-        overlay_->setCirclePreview(
-            circleCenterScreen_,
-            circleCenterScreen_,
-            centerSnapX_,
-            centerSnapY_
+        emitMessage(
+            tool_ == Tool::Line
+                ? QStringLiteral("Line start set · click end")
+                : QStringLiteral("Rectangle corner set · click opposite corner")
         );
-
-        if (snapX && snapY) {
-            emitMessage(QStringLiteral("Circle center · coincident with Origin inference"));
-        }
-        else if (snapX) {
-            emitMessage(QStringLiteral("Circle center · vertical inference"));
-        }
-        else if (snapY) {
-            emitMessage(QStringLiteral("Circle center · horizontal inference"));
-        }
-        else {
-            emitMessage(QStringLiteral("Circle center set · click radius"));
-        }
         return true;
     }
 
-    const QPointF center = *circleCenter_;
-    const double dx = point->x() - center.x();
-    const double dy = point->y() - center.y();
-    const double radius = std::hypot(dx, dy);
-
-    if (radius < 1.0e-6) {
-        emitMessage(QStringLiteral("Circle radius is too small"));
+    if (tool_ == Tool::Line) {
+        if (createLine(*firstPoint_, inferred) >= 0) {
+            ++geometryCount_;
+            emitChanged();
+        }
+        // Continuous line mode: previous endpoint becomes next start.
+        firstPoint_ = inferred;
+        firstPointScreen_ = viewportPosition;
+        overlay_->clearPreview();
+        emitMessage(QStringLiteral("Line created · continue line, or Esc to stop"));
         return true;
     }
 
-    const int geoId = createCircle(center, radius);
-    if (geoId >= 0) {
-        ++geometryCount_;
-        promptDiameter(geoId, radius * 2.0, viewportPosition);
-        emitChanged();
+    if (tool_ == Tool::CornerRectangle) {
+        const int created = createRectangle(*firstPoint_, inferred);
+        if (created >= 0) {
+            geometryCount_ += 4;
+            emitChanged();
+        }
+        firstPoint_.reset();
+        overlay_->clearPreview();
+        emitMessage(QStringLiteral("Rectangle created · draw another, or Shift+E to extrude"));
+        return true;
     }
 
-    circleCenter_.reset();
-    overlay_->clearPreview();
-
-    // Match Onshape's sketch tools: remain in Circle until another tool/Escape.
-    emitMessage(QStringLiteral("Circle created · type diameter + Enter, or draw another"));
     return true;
 }
 
 void SketchController::handleMouseMove(const QPoint& viewportPosition)
 {
-    if (state_ != State::Editing || tool_ != Tool::Circle
-        || !circleCenter_.has_value()) {
+    if (state_ != State::Editing || tool_ == Tool::None) {
         return;
     }
 
     syncOverlayGeometry();
-    overlay_->setCirclePreview(
-        circleCenterScreen_,
-        viewportPosition,
-        centerSnapX_,
-        centerSnapY_
-    );
+
+    if (tool_ == Tool::Circle && circleCenter_.has_value()) {
+        overlay_->setCirclePreview(
+            circleCenterScreen_,
+            viewportPosition,
+            centerSnapX_,
+            centerSnapY_
+        );
+        return;
+    }
+
+    if (firstPoint_.has_value()) {
+        if (tool_ == Tool::Line) {
+            overlay_->setLinePreview(
+                firstPointScreen_,
+                viewportPosition,
+                centerSnapX_,
+                centerSnapY_
+            );
+        }
+        else if (tool_ == Tool::CornerRectangle) {
+            overlay_->setRectanglePreview(
+                firstPointScreen_,
+                viewportPosition,
+                centerSnapX_,
+                centerSnapY_
+            );
+        }
+    }
 }
 
 bool SketchController::finishSketch(bool accept)
@@ -262,6 +352,7 @@ bool SketchController::finishSketch(bool accept)
     overlay_->clearPreview();
     numericInput_->hide();
     circleCenter_.reset();
+    firstPoint_.reset();
     tool_ = Tool::None;
     pendingDiameterGeometry_ = -1;
 
@@ -344,10 +435,18 @@ QPointF SketchController::applyInference(
 {
     QPointF result = point;
 
-    // First-pass inference threshold in model units.  This intentionally
-    // establishes the interaction state machine before adding the full
-    // screen-space inference graph.
-    constexpr double inferenceTolerance = 0.75;
+    // Shift explicitly suppresses automatic inferencing, matching the
+    // Onshape sketch interaction contract.
+    if (QApplication::keyboardModifiers().testFlag(Qt::ShiftModifier)) {
+        if (snapX != nullptr) *snapX = false;
+        if (snapY != nullptr) *snapY = false;
+        return result;
+    }
+
+    // This pass centralizes the initial origin/axis inference policy here so
+    // all geometry tools share it.  The next inference pass expands this into
+    // a screen-space candidate graph for existing geometry/midpoints/tangency.
+    constexpr double inferenceTolerance = 1.0;
 
     const bool x = std::abs(result.x()) <= inferenceTolerance;
     const bool y = std::abs(result.y()) <= inferenceTolerance;
@@ -445,6 +544,77 @@ int SketchController::createCircle(const QPointF& center, double radius)
         radius
     );
     return geoId;
+}
+
+int SketchController::createLine(const QPointF& start, const QPointF& end)
+{
+    if (std::hypot(end.x() - start.x(), end.y() - start.y()) < 1.0e-6) {
+        return -1;
+    }
+
+    std::ostringstream script;
+    script
+        << "import FreeCAD as App\n"
+        << "import Part\n"
+        << "doc = App.getDocument('" << document_->getName() << "')\n"
+        << "sketch = doc.getObject('Sketch')\n"
+        << "geo = sketch.addGeometry(Part.LineSegment("
+        << "App.Vector(" << start.x() << "," << start.y() << ",0),"
+        << "App.Vector(" << end.x() << "," << end.y() << ",0)), False)\n"
+        << "doc.recompute()\n";
+    Base::Interpreter().runString(script.str().c_str());
+    document_->recompute();
+
+    const int geoId = geometryCount_;
+    Base::Console().message(
+        "FREESHAPE_LINE PASS geo={} x1={:.6f} y1={:.6f} x2={:.6f} y2={:.6f}\n",
+        geoId,
+        start.x(),
+        start.y(),
+        end.x(),
+        end.y()
+    );
+    return geoId;
+}
+
+int SketchController::createRectangle(
+    const QPointF& first,
+    const QPointF& opposite
+)
+{
+    if (std::abs(opposite.x() - first.x()) < 1.0e-6
+        || std::abs(opposite.y() - first.y()) < 1.0e-6) {
+        return -1;
+    }
+
+    std::ostringstream script;
+    script
+        << "import FreeCAD as App\n"
+        << "import Part\n"
+        << "import Sketcher\n"
+        << "doc = App.getDocument('" << document_->getName() << "')\n"
+        << "sketch = doc.getObject('Sketch')\n"
+        << "x1,y1,x2,y2 = " << first.x() << "," << first.y() << ","
+        << opposite.x() << "," << opposite.y() << "\n"
+        << "ids = sketch.addGeometry([\n"
+        << " Part.LineSegment(App.Vector(x1,y1,0),App.Vector(x2,y1,0)),\n"
+        << " Part.LineSegment(App.Vector(x2,y1,0),App.Vector(x2,y2,0)),\n"
+        << " Part.LineSegment(App.Vector(x2,y2,0),App.Vector(x1,y2,0)),\n"
+        << " Part.LineSegment(App.Vector(x1,y2,0),App.Vector(x1,y1,0))], False)\n"
+        << "sketch.addConstraint(Sketcher.Constraint('Horizontal', ids[0]))\n"
+        << "sketch.addConstraint(Sketcher.Constraint('Vertical', ids[1]))\n"
+        << "sketch.addConstraint(Sketcher.Constraint('Horizontal', ids[2]))\n"
+        << "sketch.addConstraint(Sketcher.Constraint('Vertical', ids[3]))\n"
+        << "doc.recompute()\n";
+
+    Base::Interpreter().runString(script.str().c_str());
+    document_->recompute();
+
+    Base::Console().message(
+        "FREESHAPE_RECTANGLE PASS first_geo={}\n",
+        geometryCount_
+    );
+    return geometryCount_;
 }
 
 void SketchController::applyDiameterConstraint(double diameter)

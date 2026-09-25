@@ -58,7 +58,7 @@ Exit gate: embedding remains stable while product code grows.
 - [x] Origin / Top / Front / Right engine-backed reference geometry
 - [x] reference plane labels and visibility
 - [ ] resizable reference-plane display handles
-- [ ] independently resizable/scrollable Features and Parts regions
+- [x] independently resizable/scrollable Features and Parts regions
 - [ ] production icon set
 
 ### 1B SelectionService
@@ -66,15 +66,15 @@ Exit gate: embedding remains stable while product code grows.
 - [x] ordinary-click additive/toggle foundation
 - [x] Space clears selection
 - [x] initial Select Other picked-list plumbing
-- [ ] first-class hover/preselection state
-- [ ] screen-space prehighlight
-- [ ] selection count cursor badge
-- [ ] true Select Other popup at cursor
-- [ ] grave / Shift+grave candidate cycling
-- [ ] Enter accepts Select Other candidate
-- [ ] left→right containment box selection
-- [ ] right→left crossing box selection
-- [ ] Ctrl+box subtract
+- [x] first-class hover/preselection state
+- [x] engine-backed screen-space prehighlight surfaced through FreeShape HUD
+- [x] selection count viewport badge
+- [x] true Select Other popup at cursor
+- [x] grave / Shift+grave candidate cycling
+- [x] Enter accepts Select Other candidate
+- [x] left→right containment box selection
+- [x] right→left crossing box selection
+- [x] Ctrl+box subtract
 - [ ] feature-list ↔ viewport cross-highlighting
 - [ ] active dialog selection-field routing
 
@@ -110,8 +110,8 @@ Exit gate: embedding remains stable while product code grows.
 - [x] selection-vs-keyboard visual field distinction
 - [x] Enter / Esc basics
 - [x] transaction-backed Extrude live preview
-- [ ] movable dialog
-- [ ] resizable dialog
+- [x] movable dialog
+- [x] resizable dialog
 - [ ] Tab field traversal contract
 - [ ] Shift+Enter accept + repeat
 - [ ] generic `FeatureDefinition` parameter schema
@@ -121,7 +121,7 @@ Exit gate: embedding remains stable while product code grows.
 
 ### 1F Automatic measurement
 
-- [ ] bottom-right selection measurement HUD
+- [x] bottom-right selection measurement HUD (edge length / face area / volume / point / picked-point distance)
 - [ ] `[` detailed Measure panel
 - [ ] edge length/radius
 - [ ] face area
@@ -134,7 +134,7 @@ one coherent FreeShape interaction system rather than wrapped FreeCAD behavior.
 
 ---
 
-## Phase 2 — Sketcher UX
+## Phase 2 — Sketcher UX — ACTIVE IN PARALLEL WITH PHASE 1
 
 ### 2A Geometry tools
 
@@ -142,8 +142,8 @@ one coherent FreeShape interaction system rather than wrapped FreeCAD behavior.
 - [x] Top-plane center-point Circle first slice
 - [x] live circle rubber-band overlay
 - [x] immediate diameter entry
-- [ ] Line
-- [ ] corner rectangle
+- [x] Line first slice
+- [x] corner rectangle first slice
 - [ ] center rectangle
 - [ ] 3-point arc
 - [ ] spline
@@ -168,7 +168,7 @@ candidate graph.
 - [ ] equal
 - [ ] wake-up geometry
 - [ ] inference glyphs/guides
-- [ ] Shift temporarily suppresses automatic inference
+- [x] Shift temporarily suppresses automatic inference
 
 ### 2C Constraints and dimensions
 

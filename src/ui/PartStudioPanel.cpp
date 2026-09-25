@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QToolButton>
+#include <QSplitter>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QVBoxLayout>
@@ -58,26 +59,47 @@ void PartStudioPanel::buildUi()
     }
     root->addLayout(headingRow);
 
-    tree_ = new QTreeWidget(this);
+    splitter_ = new QSplitter(Qt::Vertical, this);
+    splitter_->setChildrenCollapsible(false);
+    splitter_->setHandleWidth(6);
+
+    auto* featureRegion = new QWidget(splitter_);
+    auto* featureLayout = new QVBoxLayout(featureRegion);
+    featureLayout->setContentsMargins(0, 0, 0, 0);
+    featureLayout->setSpacing(2);
+
+    tree_ = new QTreeWidget(featureRegion);
     tree_->setHeaderHidden(true);
     tree_->setRootIsDecorated(true);
     tree_->setIndentation(14);
     tree_->setUniformRowHeights(true);
-    root->addWidget(tree_, 1);
+    featureLayout->addWidget(tree_, 1);
 
-    auto* rollback = new QFrame(this);
+    auto* rollback = new QFrame(featureRegion);
     rollback->setObjectName(QStringLiteral("RollbackBar"));
-    rollback->setToolTip(QStringLiteral("Rollback bar"));
-    root->addWidget(rollback);
+    rollback->setToolTip(QStringLiteral("Rollback bar · model history position"));
+    featureLayout->addWidget(rollback);
 
-    partsLabel_ = new QLabel(this);
+    auto* partsRegion = new QWidget(splitter_);
+    auto* partsLayout = new QVBoxLayout(partsRegion);
+    partsLayout->setContentsMargins(0, 3, 0, 0);
+    partsLayout->setSpacing(2);
+
+    partsLabel_ = new QLabel(partsRegion);
     partsLabel_->setObjectName(QStringLiteral("PanelHeading"));
-    root->addWidget(partsLabel_);
+    partsLayout->addWidget(partsLabel_);
 
-    partLabel_ = new QLabel(this);
+    partLabel_ = new QLabel(partsRegion);
     partLabel_->setMinimumHeight(24);
-    root->addWidget(partLabel_);
-    root->addStretch(1);
+    partsLayout->addWidget(partLabel_);
+    partsLayout->addStretch(1);
+
+    splitter_->addWidget(featureRegion);
+    splitter_->addWidget(partsRegion);
+    splitter_->setStretchFactor(0, 4);
+    splitter_->setStretchFactor(1, 2);
+    splitter_->setSizes({410, 180});
+    root->addWidget(splitter_, 1);
 
     QObject::connect(filter_, &QLineEdit::textChanged, this, [this](const QString& text) {
         filterTree(text);

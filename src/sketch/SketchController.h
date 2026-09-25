@@ -35,7 +35,9 @@ public:
 
     enum class Tool {
         None,
-        Circle
+        Circle,
+        Line,
+        CornerRectangle
     };
 
     SketchController(
@@ -55,6 +57,9 @@ public:
     bool hasClosedProfile() const;
 
     void activateCircle();
+    void activateLine();
+    void activateCornerRectangle();
+    void cancelActiveTool();
 
     bool handleMousePress(const QPoint& viewportPosition, Qt::MouseButton button);
     void handleMouseMove(const QPoint& viewportPosition);
@@ -71,6 +76,8 @@ private:
 
     bool createSketchOnPlane(const QString& planeObjectName);
     int createCircle(const QPointF& center, double radius);
+    int createLine(const QPointF& start, const QPointF& end);
+    int createRectangle(const QPointF& first, const QPointF& opposite);
     void applyDiameterConstraint(double diameter);
     void promptDiameter(int geometryIndex, double diameter, const QPoint& screenPosition);
 
@@ -91,6 +98,8 @@ private:
     bool transactionOpen_ = false;
 
     std::optional<QPointF> circleCenter_;
+    std::optional<QPointF> firstPoint_;
+    QPoint firstPointScreen_;
     QPoint circleCenterScreen_;
     bool centerSnapX_ = false;
     bool centerSnapY_ = false;

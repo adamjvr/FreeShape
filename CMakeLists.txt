@@ -175,6 +175,14 @@ add_executable(FreeShape
     src/ui/CommandSearch.cpp
     src/ui/CommandSearch.h
     src/ui/DesignSystem.cpp
+    src/ui/SelectionOverlay.cpp
+    src/ui/SelectionOverlay.h
+    src/ui/SelectOtherPopup.cpp
+    src/ui/SelectOtherPopup.h
+    src/ui/MeasurementHud.cpp
+    src/ui/MeasurementHud.h
+    src/ui/ReferenceGeometryOverlay.cpp
+    src/ui/ReferenceGeometryOverlay.h
     src/ui/DesignSystem.h
     src/ui/DocumentTabs.cpp
     src/ui/DocumentTabs.h

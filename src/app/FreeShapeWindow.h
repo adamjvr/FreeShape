@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <QMainWindow>
+#include <QPoint>
 
 namespace App {
 class Document;
@@ -17,7 +18,6 @@ class View3DInventor;
 }
 
 class QLabel;
-class QPoint;
 class QToolBar;
 class QWidget;
 
@@ -34,11 +34,16 @@ class SketchController;
 }
 
 namespace freeshape::ui {
+struct SelectOtherCandidate;
 class DocumentTabs;
 class FeaturePopup;
 class PartStudioPanel;
 class ShortcutPalette;
 class CommandSearch;
+class SelectionOverlay;
+class SelectOtherPopup;
+class MeasurementHud;
+class ReferenceGeometryOverlay;
 }
 
 namespace freeshape::app {
@@ -72,13 +77,16 @@ private:
     void toggleSketches();
     void hideSelected();
     void showLastHidden();
-    void cycleSelectOther();
+    void cycleSelectOther(int delta = 1);
+    void acceptSelectOtherCandidate(const freeshape::ui::SelectOtherCandidate& candidate);
     void normalToSelectionOrPlane();
 
     void setReferencePlanesVisible(bool visible);
     void styleReferencePlanes();
 
     void refreshPartStudio();
+    void refreshSelectionUi();
+    void refreshSelectOtherCandidates();
     void showToast(const QString& text, int milliseconds = 2800);
     void updateToolbarContext(bool sketchMode);
 
@@ -98,6 +106,10 @@ private:
     freeshape::ui::FeaturePopup* featurePopup_ = nullptr;
     freeshape::ui::ShortcutPalette* shortcutPalette_ = nullptr;
     freeshape::ui::CommandSearch* commandSearch_ = nullptr;
+    freeshape::ui::SelectionOverlay* selectionOverlay_ = nullptr;
+    freeshape::ui::SelectOtherPopup* selectOtherPopup_ = nullptr;
+    freeshape::ui::MeasurementHud* measurementHud_ = nullptr;
+    freeshape::ui::ReferenceGeometryOverlay* referenceOverlay_ = nullptr;
 
     std::unique_ptr<freeshape::commands::CommandRegistry> commands_;
     std::unique_ptr<Gui::SelectionObserver> selectionObserver_;
@@ -110,6 +122,7 @@ private:
     bool extrudeCreatedPad_ = false;
     std::vector<std::string> lastHiddenObjects_;
     std::size_t selectOtherIndex_ = 0;
+    QPoint lastViewportCursor_;
 };
 
 }  // namespace freeshape::app

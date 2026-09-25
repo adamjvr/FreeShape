@@ -13,6 +13,7 @@ class QLabel;
 class QLineEdit;
 class QTreeWidget;
 class QTreeWidgetItem;
+class QSplitter;
 
 namespace freeshape::ui {
 
@@ -38,6 +39,7 @@ private:
     QLabel* partsLabel_ = nullptr;
     QTreeWidget* tree_ = nullptr;
     QLabel* partLabel_ = nullptr;
+    QSplitter* splitter_ = nullptr;
 
     bool hasSketch_ = false;
     bool hasPad_ = false;

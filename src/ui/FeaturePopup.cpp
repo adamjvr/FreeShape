@@ -1,6 +1,7 @@
 #include "ui/FeaturePopup.h"
 
 #include <utility>
+#include <algorithm>
 
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -9,6 +10,8 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QStackedWidget>
+#include <QSizeGrip>
+#include <QMouseEvent>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -40,7 +43,9 @@ FeaturePopup::FeaturePopup(QWidget* parent)
     : QFrame(parent)
 {
     setObjectName(QStringLiteral("FeaturePopup"));
-    setFixedWidth(300);
+    setMinimumWidth(300);
+    setMaximumWidth(520);
+    resize(310, 180);
     buildUi();
     setMode(Mode::Sketch);
     hide();
@@ -198,6 +203,12 @@ void FeaturePopup::buildUi()
     pages_->addWidget(filletPage_);
     root->addWidget(pages_);
 
+    auto* gripRow = new QHBoxLayout;
+    gripRow->addStretch(1);
+    sizeGrip_ = new QSizeGrip(this);
+    gripRow->addWidget(sizeGrip_);
+    root->addLayout(gripRow);
+
     QObject::connect(acceptButton, &QToolButton::clicked, this, [this] {
         if (accept_) {
             accept_();
@@ -230,17 +241,17 @@ void FeaturePopup::setMode(Mode mode)
         case Mode::Sketch:
             title_->setText(QStringLiteral("Sketch"));
             pages_->setCurrentWidget(sketchPage_);
-            setFixedHeight(170);
+            resize(width(), 190);
             break;
         case Mode::Extrude:
             title_->setText(QStringLiteral("Extrude"));
             pages_->setCurrentWidget(extrudePage_);
-            setFixedHeight(320);
+            resize(width(), 345);
             break;
         case Mode::Fillet:
             title_->setText(QStringLiteral("Fillet"));
             pages_->setCurrentWidget(filletPage_);
-            setFixedHeight(190);
+            resize(width(), 215);
             break;
     }
 }
@@ -282,6 +293,54 @@ void FeaturePopup::setCancelHandler(std::function<void()> handler)
 void FeaturePopup::setDepthChangedHandler(std::function<void(double)> handler)
 {
     depthChanged_ = std::move(handler);
+}
+
+
+void FeaturePopup::focusPrimaryField()
+{
+    if (mode_ == Mode::Extrude && depth_ != nullptr) {
+        depth_->setFocus();
+        depth_->selectAll();
+    }
+    else if (mode_ == Mode::Fillet && radius_ != nullptr) {
+        radius_->setFocus();
+        radius_->selectAll();
+    }
+}
+
+void FeaturePopup::mousePressEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton && event->position().y() <= 42.0) {
+        dragging_ = true;
+        dragOffset_ = event->globalPosition().toPoint() - frameGeometry().topLeft();
+        event->accept();
+        return;
+    }
+    QFrame::mousePressEvent(event);
+}
+
+void FeaturePopup::mouseMoveEvent(QMouseEvent* event)
+{
+    if (dragging_ && event->buttons().testFlag(Qt::LeftButton)) {
+        QPoint target = event->globalPosition().toPoint() - dragOffset_;
+        if (parentWidget() != nullptr) {
+            target = parentWidget()->mapFromGlobal(target);
+            target.setX(std::clamp(target.x(), 0, std::max(0, parentWidget()->width() - width())));
+            target.setY(std::clamp(target.y(), 0, std::max(0, parentWidget()->height() - height())));
+        }
+        move(target);
+        event->accept();
+        return;
+    }
+    QFrame::mouseMoveEvent(event);
+}
+
+void FeaturePopup::mouseReleaseEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton) {
+        dragging_ = false;
+    }
+    QFrame::mouseReleaseEvent(event);
 }
 
 }  // namespace freeshape::ui

@@ -3,8 +3,13 @@
 #include <algorithm>
 #include <utility>
 
-#include <App/DocumentObject.h>
+#include <Gui/Selection/BoxSelection.h>
 #include <Gui/Selection/Selection.h>
+#include <Gui/View3DInventorViewer.h>
+
+#include "ui/SelectionOverlay.h"
+
+#include <Inventor/SbVec2s.h>
 
 #include <QApplication>
 #include <QEvent>
@@ -15,10 +20,12 @@ namespace freeshape::input {
 
 ViewportInteractionFilter::ViewportInteractionFilter(
     Gui::Document* guiDocument,
+    Gui::View3DInventorViewer* viewer,
     QObject* parent
 )
     : QObject(parent)
     , guiDocument_(guiDocument)
+    , viewer_(viewer)
 {}
 
 void ViewportInteractionFilter::setContextMenuHandler(
@@ -26,6 +33,20 @@ void ViewportInteractionFilter::setContextMenuHandler(
 )
 {
     contextMenu_ = std::move(handler);
+}
+
+void ViewportInteractionFilter::setCursorPositionHandler(
+    std::function<void(const QPoint&)> handler
+)
+{
+    cursorPosition_ = std::move(handler);
+}
+
+void ViewportInteractionFilter::setSelectionChangedHandler(
+    std::function<void()> handler
+)
+{
+    selectionChanged_ = std::move(handler);
 }
 
 void ViewportInteractionFilter::setSketchHandlers(
@@ -37,26 +58,50 @@ void ViewportInteractionFilter::setSketchHandlers(
     sketchMouseMove_ = std::move(mouseMove);
 }
 
+void ViewportInteractionFilter::setSelectionOverlay(
+    freeshape::ui::SelectionOverlay* overlay
+)
+{
+    selectionOverlay_ = overlay;
+}
+
 bool ViewportInteractionFilter::eventFilter(QObject* watched, QEvent* event)
 {
     (void)watched;
 
     if (event->type() == QEvent::MouseMove) {
         auto* mouse = static_cast<QMouseEvent*>(event);
+        const QPoint position = mouse->position().toPoint();
+
+        if (cursorPosition_) {
+            cursorPosition_(position);
+        }
 
         if (sketchMouseMove_) {
-            sketchMouseMove_(mouse->position().toPoint());
+            sketchMouseMove_(position);
         }
 
         const int threshold = QApplication::startDragDistance();
 
-        if (mouse->buttons().testFlag(Qt::LeftButton)
-            && (mouse->position().toPoint() - leftPressPosition_).manhattanLength() > threshold) {
-            leftDragged_ = true;
+        if (mouse->buttons().testFlag(Qt::LeftButton)) {
+            leftCurrentPosition_ = position;
+            if ((position - leftPressPosition_).manhattanLength() > threshold) {
+                leftDragged_ = true;
+                if (!boxSelecting_) {
+                    boxSelecting_ = true;
+                    if (selectionOverlay_ != nullptr) {
+                        selectionOverlay_->beginBox(leftPressPosition_);
+                    }
+                }
+                if (selectionOverlay_ != nullptr) {
+                    selectionOverlay_->updateBox(position);
+                }
+                return true;
+            }
         }
 
         if (mouse->buttons().testFlag(Qt::RightButton)
-            && (mouse->position().toPoint() - rightPressPosition_).manhattanLength() > threshold) {
+            && (position - rightPressPosition_).manhattanLength() > threshold) {
             rightDragged_ = true;
         }
     }
@@ -69,11 +114,12 @@ bool ViewportInteractionFilter::eventFilter(QObject* watched, QEvent* event)
             return true;
         }
 
-        if (mouse->button() == Qt::LeftButton
-            && mouse->modifiers() == Qt::NoModifier) {
+        if (mouse->button() == Qt::LeftButton) {
             selectionBeforeClick_ = snapshotSelection();
             leftPressPosition_ = mouse->position().toPoint();
+            leftCurrentPosition_ = leftPressPosition_;
             leftDragged_ = false;
+            boxSelecting_ = false;
         }
 
         if (mouse->button() == Qt::RightButton) {
@@ -85,12 +131,30 @@ bool ViewportInteractionFilter::eventFilter(QObject* watched, QEvent* event)
     if (event->type() == QEvent::MouseButtonRelease) {
         auto* mouse = static_cast<QMouseEvent*>(event);
 
-        if (mouse->button() == Qt::LeftButton
-            && mouse->modifiers() == Qt::NoModifier
-            && !leftDragged_) {
-            QTimer::singleShot(0, this, [this] {
-                reconcileOnshapeToggleSelection();
-            });
+        if (mouse->button() == Qt::LeftButton) {
+            if (boxSelecting_ && leftDragged_) {
+                leftCurrentPosition_ = mouse->position().toPoint();
+                applyDirectionalBoxSelection(
+                    mouse->modifiers().testFlag(Qt::ControlModifier)
+                );
+                if (selectionOverlay_ != nullptr) {
+                    selectionOverlay_->endBox();
+                }
+                boxSelecting_ = false;
+                if (selectionChanged_) {
+                    selectionChanged_();
+                }
+                return true;
+            }
+
+            if (mouse->modifiers() == Qt::NoModifier && !leftDragged_) {
+                QTimer::singleShot(0, this, [this] {
+                    reconcileOnshapeToggleSelection();
+                    if (selectionChanged_) {
+                        selectionChanged_();
+                    }
+                });
+            }
         }
 
         if (mouse->button() == Qt::RightButton && !rightDragged_) {
@@ -118,7 +182,10 @@ std::vector<SelectionKey> ViewportInteractionFilter::snapshotSelection() const
         result.push_back({
             item.DocName,
             item.FeatName,
-            item.SubName != nullptr ? item.SubName : ""
+            item.SubName != nullptr ? item.SubName : "",
+            item.x,
+            item.y,
+            item.z
         });
     }
 
@@ -137,11 +204,12 @@ void ViewportInteractionFilter::applySelection(
             item.document.c_str(),
             item.object.c_str(),
             item.subElement.empty() ? nullptr : item.subElement.c_str(),
-            0.0F,
-            0.0F,
-            0.0F,
+            item.x,
+            item.y,
+            item.z,
             nullptr,
-            false
+            false,
+            Gui::SelectionChanges::PickedPoint::Valid
         );
     }
 }
@@ -168,6 +236,51 @@ void ViewportInteractionFilter::reconcileOnshapeToggleSelection()
     if (desired != after) {
         applySelection(desired);
     }
+}
+
+void ViewportInteractionFilter::applyDirectionalBoxSelection(bool subtract)
+{
+    if (viewer_ == nullptr) {
+        return;
+    }
+
+    auto* gl = viewer_->getGLWidget();
+    if (gl == nullptr) {
+        return;
+    }
+
+    const int h = gl->height();
+    std::vector<SbVec2s> polygon;
+    polygon.emplace_back(
+        static_cast<short>(leftPressPosition_.x()),
+        static_cast<short>(h - leftPressPosition_.y())
+    );
+    polygon.emplace_back(
+        static_cast<short>(leftCurrentPosition_.x()),
+        static_cast<short>(h - leftCurrentPosition_.y())
+    );
+
+    const auto before = selectionBeforeClick_;
+
+    // Current FreeCAD main implements the exact window/crossing distinction we
+    // want: left→right uses center/containment semantics; right→left uses
+    // intersection semantics. Ask it for subelements, then impose FreeShape's
+    // subtract policy if Ctrl was held.
+    Gui::applyBoxSelection(viewer_, polygon, true, false);
+
+    if (!subtract) {
+        return;
+    }
+
+    const auto boxed = snapshotSelection();
+    auto desired = before;
+    for (const auto& hit : boxed) {
+        desired.erase(
+            std::remove(desired.begin(), desired.end(), hit),
+            desired.end()
+        );
+    }
+    applySelection(desired);
 }
 
 }  // namespace freeshape::input
