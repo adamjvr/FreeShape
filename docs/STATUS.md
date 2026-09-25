@@ -70,3 +70,19 @@ Added in one integrated interaction pass:
 - real Line and Corner Rectangle sketch-tool first slices;
 - shared sketch inference policy with Shift suppression;
 - updated roadmap and verification markers.
+
+
+## v0.5.0
+
+GUI/action-reaction pass based on the 2026-09-25 screencast:
+
+- toolbar graphics enlarged and replaced with custom icon artwork;
+- icon-only controls have FreeShape name/shortcut hover bubbles;
+- active sketch tools visibly latch and toggle off with the same command;
+- Escape exits the active tool before cancelling the parent Sketch;
+- Center rectangle added;
+- viewport default-plane subobject picks normalized to Top/Front/Right;
+- hover/preselection participates in Hide and Normal-to behavior;
+- feature dialog selection fields follow live selections;
+- plane-specific context menu behavior added;
+- off-screen reference labels no longer clamp to unrelated screen edges.

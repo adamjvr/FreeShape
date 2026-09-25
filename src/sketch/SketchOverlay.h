@@ -18,13 +18,14 @@ public:
     );
     void setLinePreview(const QPoint& start, const QPoint& end, bool snapX, bool snapY);
     void setRectanglePreview(const QPoint& first, const QPoint& opposite, bool snapX, bool snapY);
+    void setCenterRectanglePreview(const QPoint& center, const QPoint& corner, bool snapX, bool snapY);
     void clearPreview();
 
 protected:
     void paintEvent(QPaintEvent* event) override;
 
 private:
-    enum class PreviewKind { None, Circle, Line, Rectangle };
+    enum class PreviewKind { None, Circle, Line, Rectangle, CenterRectangle };
     PreviewKind previewKind_ = PreviewKind::None;
     bool previewVisible_ = false;
     QPoint center_;

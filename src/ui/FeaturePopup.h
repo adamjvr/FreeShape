@@ -30,6 +30,7 @@ public:
     Mode mode() const;
 
     void setSelectionText(const QString& text);
+    void setEntitySelectionText(const QString& text);
     void setDepth(double value);
     double depth() const;
     void focusPrimaryField();
@@ -50,6 +51,8 @@ private:
     Mode mode_ = Mode::Sketch;
     QLabel* title_ = nullptr;
     QLabel* selectionText_ = nullptr;
+    QLabel* extrudeSelectionText_ = nullptr;
+    QLabel* filletSelectionText_ = nullptr;
     QStackedWidget* pages_ = nullptr;
     QWidget* sketchPage_ = nullptr;
     QWidget* extrudePage_ = nullptr;

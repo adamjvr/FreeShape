@@ -379,3 +379,26 @@ accept gitlink
 ```
 
 Never float against unrecorded upstream HEAD.
+
+
+## v0.5.0 GUI/action-reaction checkpoint
+
+- [x] large custom toolbar icon system
+- [x] delayed name/shortcut/detail hover bubbles for icon-only tools
+- [x] explicit Part Studio tool groups
+- [x] explicit Sketch tool groups with Extrude/Revolve retained
+- [x] active sketch-tool checked state
+- [x] same-tool shortcut/click exits the tool
+- [x] layered Escape exits sketch tool before containing Sketch command
+- [x] center-point rectangle tool (`R`) first implementation
+- [x] nested Body/Origin datum-plane selection normalization
+- [x] semantic Top/Front/Right preselection naming
+- [x] datum-specific context menu foundation
+- [x] selection-driven feature-dialog field updates
+- [x] hover Hide path
+- [x] off-screen reference-label suppression
+
+Next GUI/interaction work remains high priority: native sketch dimensions for
+Line/Rectangle, richer inference, recently-used tools, toolbar customization,
+eye/visibility controls in the Feature list, Preview/Final editing semantics,
+and arbitrary planar-face Sketch/Normal-to transforms.

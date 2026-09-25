@@ -177,6 +177,10 @@ add_executable(FreeShape
     src/ui/DesignSystem.cpp
     src/ui/SelectionOverlay.cpp
     src/ui/SelectionOverlay.h
+    src/ui/ToolIconFactory.cpp
+    src/ui/ToolIconFactory.h
+    src/ui/ToolNameBubble.cpp
+    src/ui/ToolNameBubble.h
     src/ui/SelectOtherPopup.cpp
     src/ui/SelectOtherPopup.h
     src/ui/MeasurementHud.cpp

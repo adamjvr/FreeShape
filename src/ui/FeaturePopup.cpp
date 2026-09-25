@@ -138,12 +138,12 @@ void FeaturePopup::buildUi()
         }
         layout->addLayout(operationRow);
 
-        QLabel* extrudeSelection = nullptr;
+        extrudeSelectionText_ = nullptr;
         layout->addWidget(new QLabel(QStringLiteral("Faces and sketch regions"), extrudePage_));
         layout->addWidget(
             makeSelectionField(
                 QStringLiteral("Sketch 1"),
-                &extrudeSelection,
+                &extrudeSelectionText_,
                 extrudePage_
             )
         );
@@ -181,12 +181,12 @@ void FeaturePopup::buildUi()
     filletPage_ = new QWidget(pages_);
     {
         auto* form = new QFormLayout(filletPage_);
-        QLabel* fieldText = nullptr;
+        filletSelectionText_ = nullptr;
         form->addRow(
             QStringLiteral("Entities"),
             makeSelectionField(
                 QStringLiteral("Select edges or faces"),
-                &fieldText,
+                &filletSelectionText_,
                 filletPage_
             )
         );
@@ -265,6 +265,21 @@ void FeaturePopup::setSelectionText(const QString& text)
 {
     if (selectionText_ != nullptr) {
         selectionText_->setText(text);
+    }
+}
+
+void FeaturePopup::setEntitySelectionText(const QString& text)
+{
+    QLabel* target = nullptr;
+    if (mode_ == Mode::Extrude) {
+        target = extrudeSelectionText_;
+    }
+    else if (mode_ == Mode::Fillet) {
+        target = filletSelectionText_;
+    }
+
+    if (target != nullptr) {
+        target->setText(text.isEmpty() ? QStringLiteral("Select entities") : text);
     }
 }
 

@@ -27,16 +27,27 @@ QString DesignSystem::applicationStyleSheet()
         }
 
         QToolBar#FeatureBar, QToolBar#SketchBar {
-            min-height: 39px;
-            max-height: 39px;
+            min-height: 46px;
+            max-height: 46px;
+            spacing: 1px;
+            padding: 3px 5px;
         }
 
         QToolButton {
             background: transparent;
             border: 1px solid transparent;
-            border-radius: 3px;
-            padding: 4px 7px;
-            min-height: 22px;
+            border-radius: 4px;
+            padding: 3px;
+            min-height: 24px;
+        }
+
+        QToolBar#FeatureBar QToolButton,
+        QToolBar#SketchBar QToolButton {
+            min-width: 38px;
+            max-width: 38px;
+            min-height: 36px;
+            max-height: 36px;
+            padding: 2px;
         }
 
         QToolButton:hover {
@@ -178,6 +189,33 @@ QString DesignSystem::applicationStyleSheet()
         }
 
 
+
+
+        QFrame#ToolNameBubble {
+            background: #353a3f;
+            border: 1px solid #202428;
+            border-radius: 5px;
+        }
+
+        QLabel#ToolBubbleTitle {
+            background: transparent;
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        QLabel#ToolBubbleShortcut {
+            background: transparent;
+            color: #d1d6da;
+            font-size: 11px;
+            padding-left: 9px;
+        }
+
+        QLabel#ToolBubbleDetail {
+            background: transparent;
+            color: #c4c9cd;
+            font-size: 10px;
+        }
 
         QFrame#SelectOtherPopup, QFrame#CommandSearch {
             background: #ffffff;

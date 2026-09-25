@@ -1,6 +1,7 @@
 #include "app/FreeShapeWindow.h"
 
 #include <algorithm>
+#include <functional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -33,11 +34,14 @@
 #include "ui/SelectOtherPopup.h"
 #include "ui/MeasurementHud.h"
 #include "ui/ReferenceGeometryOverlay.h"
+#include "ui/ToolIconFactory.h"
+#include "ui/ToolNameBubble.h"
 
 #include <QAction>
 #include <QComboBox>
 #include <QCursor>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
@@ -94,6 +98,57 @@ QWidget* stretchWidget(QWidget* parent)
     auto* stretch = new QWidget(parent);
     stretch->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     return stretch;
+}
+
+QString datumPlaneFromSelection(
+    const QString& object,
+    const QString& subElement
+)
+{
+    const auto match = [&](const QString& internal) {
+        return object == internal
+            || subElement == internal
+            || subElement.contains(QStringLiteral(".") + internal)
+            || subElement.startsWith(internal + QStringLiteral("."));
+    };
+
+    if (match(QStringLiteral("XY_Plane"))) {
+        return QStringLiteral("XY_Plane");
+    }
+    if (match(QStringLiteral("XZ_Plane"))) {
+        return QStringLiteral("XZ_Plane");
+    }
+    if (match(QStringLiteral("YZ_Plane"))) {
+        return QStringLiteral("YZ_Plane");
+    }
+    return {};
+}
+
+QString semanticPlaneName(const QString& internal)
+{
+    if (internal == QStringLiteral("XY_Plane")) {
+        return QStringLiteral("Top");
+    }
+    if (internal == QStringLiteral("XZ_Plane")) {
+        return QStringLiteral("Front");
+    }
+    if (internal == QStringLiteral("YZ_Plane")) {
+        return QStringLiteral("Right");
+    }
+    return internal;
+}
+
+QString semanticSelectionText(const QString& object, const QString& subElement)
+{
+    const QString plane = datumPlaneFromSelection(object, subElement);
+    if (!plane.isEmpty()) {
+        return semanticPlaneName(plane);
+    }
+
+    if (subElement.isEmpty()) {
+        return object;
+    }
+    return object + QStringLiteral(" · ") + subElement;
 }
 
 }  // namespace
@@ -154,6 +209,7 @@ FreeShapeWindow::FreeShapeWindow(App::Document* document, QWidget* parent)
         refreshPartStudio();
         updateToolbarContext(sketchController_ != nullptr
                              && sketchController_->isEditing());
+        syncActiveToolButtons();
     });
 
     refreshPartStudio();
@@ -167,23 +223,29 @@ FreeShapeWindow::FreeShapeWindow(App::Document* document, QWidget* parent)
         [this](const Gui::SelectionChanges& msg) {
             if (msg.Type == Gui::SelectionChanges::SetPreselect
                 || msg.Type == Gui::SelectionChanges::MovePreselect) {
+                lastPreselectionObject_ = QString::fromUtf8(
+                    msg.pObjectName != nullptr ? msg.pObjectName : ""
+                );
+                lastPreselectionSubElement_ = QString::fromUtf8(
+                    msg.pSubName != nullptr ? msg.pSubName : ""
+                );
+
                 if (selectionOverlay_ != nullptr) {
-                    const QString object = QString::fromUtf8(
-                        msg.pObjectName != nullptr ? msg.pObjectName : ""
+                    selectionOverlay_->setPreselection(
+                        semanticSelectionText(
+                            lastPreselectionObject_,
+                            lastPreselectionSubElement_
+                        ),
+                        lastViewportCursor_
                     );
-                    const QString sub = QString::fromUtf8(
-                        msg.pSubName != nullptr ? msg.pSubName : ""
-                    );
-                    const QString text = sub.isEmpty()
-                        ? object
-                        : object + QStringLiteral(" · ") + sub;
-                    selectionOverlay_->setPreselection(text, lastViewportCursor_);
                 }
                 return;
             }
 
             if (msg.Type == Gui::SelectionChanges::RmvPreselect
                 || msg.Type == Gui::SelectionChanges::RmvPreselectSignal) {
+                lastPreselectionObject_.clear();
+                lastPreselectionSubElement_.clear();
                 if (selectionOverlay_ != nullptr) {
                     selectionOverlay_->clearPreselection();
                 }
@@ -206,18 +268,13 @@ FreeShapeWindow::FreeShapeWindow(App::Document* document, QWidget* parent)
             const QString sub =
                 QString::fromUtf8(msg.pSubName != nullptr ? msg.pSubName : "");
 
+            const QString selectedPlane = datumPlaneFromSelection(object, sub);
             if (sketchController_ != nullptr
                 && sketchController_->isAwaitingPlane()
-                && (object == QStringLiteral("XY_Plane")
-                    || object == QStringLiteral("XZ_Plane")
-                    || object == QStringLiteral("YZ_Plane"))) {
-                if (sketchController_->selectPlane(object)) {
+                && !selectedPlane.isEmpty()) {
+                if (sketchController_->selectPlane(selectedPlane)) {
                     featurePopup_->setSelectionText(
-                        object == QStringLiteral("XY_Plane")
-                            ? QStringLiteral("Top")
-                            : object == QStringLiteral("XZ_Plane")
-                                  ? QStringLiteral("Front")
-                                  : QStringLiteral("Right")
+                        semanticPlaneName(selectedPlane)
                     );
                     setReferencePlanesVisible(false);
                     updateToolbarContext(true);
@@ -229,11 +286,7 @@ FreeShapeWindow::FreeShapeWindow(App::Document* document, QWidget* parent)
                 partStudioPanel_->setSelectedFeature(object);
             }
 
-            QString text = QStringLiteral("%1").arg(object);
-            if (!sub.isEmpty()) {
-                text += QStringLiteral(" · %1").arg(sub);
-            }
-            showToast(text);
+            showToast(semanticSelectionText(object, sub));
             refreshSelectionUi();
         }
     );
@@ -383,6 +436,17 @@ void FreeShapeWindow::buildCommands()
     );
 
     commands_->add(
+        QStringLiteral("sketch_center_rectangle"),
+        QStringLiteral("Center point rectangle"),
+        QKeySequence(QStringLiteral("R")),
+        [this] {
+            if (sketchController_ != nullptr && sketchController_->isEditing()) {
+                sketchController_->activateCenterRectangle();
+            }
+        }
+    );
+
+    commands_->add(
         QStringLiteral("fit"),
         QStringLiteral("Fit"),
         QKeySequence(QStringLiteral("F")),
@@ -516,14 +580,34 @@ void FreeShapeWindow::buildCommands()
 
     commands_->add(
         QStringLiteral("cancel_feature"),
-        QStringLiteral("Cancel feature"),
+        QStringLiteral("Cancel / exit active tool"),
         QKeySequence(Qt::Key_Escape),
         [this] {
+            // Onshape-style layering: Escape exits the active sketch tool
+            // first. A subsequent Escape can cancel the containing command.
+            if (sketchController_ != nullptr
+                && sketchController_->isEditing()
+                && sketchController_->activeTool()
+                    != freeshape::sketch::SketchController::Tool::None) {
+                sketchController_->cancelActiveTool();
+                syncActiveToolButtons();
+                return;
+            }
+
+            if (selectOtherPopup_ != nullptr && selectOtherPopup_->isVisible()) {
+                selectOtherPopup_->hide();
+                return;
+            }
+            if (shortcutPalette_ != nullptr && shortcutPalette_->isVisible()) {
+                shortcutPalette_->hide();
+                return;
+            }
+            if (commandSearch_ != nullptr && commandSearch_->isVisible()) {
+                commandSearch_->hide();
+                return;
+            }
             if (featurePopup_ != nullptr && featurePopup_->isVisible()) {
                 cancelFeatureCommand();
-            }
-            else if (shortcutPalette_ != nullptr) {
-                shortcutPalette_->hide();
             }
         }
     );
@@ -531,6 +615,8 @@ void FreeShapeWindow::buildCommands()
 
 void FreeShapeWindow::buildToolbars()
 {
+    toolNameBubble_ = new freeshape::ui::ToolNameBubble(this);
+
     documentToolbar_ = new QToolBar(this);
     documentToolbar_->setObjectName(QStringLiteral("DocumentBar"));
     documentToolbar_->setMovable(false);
@@ -538,7 +624,13 @@ void FreeShapeWindow::buildToolbars()
 
     auto* menu = new QToolButton(documentToolbar_);
     menu->setText(QStringLiteral("☰"));
-    menu->setToolTip(QStringLiteral("Document menu"));
+    menu->setFixedSize(30, 28);
+    toolNameBubble_->watch(
+        menu,
+        QStringLiteral("Document menu"),
+        {},
+        QStringLiteral("Document and workspace commands")
+    );
     documentToolbar_->addWidget(menu);
 
     auto* brand = new QLabel(QStringLiteral("FreeShape"), documentToolbar_);
@@ -551,7 +643,8 @@ void FreeShapeWindow::buildToolbars()
 
     auto* link = new QToolButton(documentToolbar_);
     link->setText(QStringLiteral("↗"));
-    link->setToolTip(QStringLiteral("Document link"));
+    link->setFixedSize(30, 28);
+    toolNameBubble_->watch(link, QStringLiteral("Document link"));
     documentToolbar_->addWidget(link);
 
     documentToolbar_->addWidget(stretchWidget(documentToolbar_));
@@ -561,103 +654,209 @@ void FreeShapeWindow::buildToolbars()
     search->setReadOnly(true);
     search->setCursor(Qt::PointingHandCursor);
     search->setFixedWidth(170);
-    search->setToolTip(QStringLiteral("Search all FreeShape commands (Alt+C)"));
     documentToolbar_->addWidget(search);
 
     auto* help = new QToolButton(documentToolbar_);
     help->setText(QStringLiteral("?"));
+    help->setFixedSize(30, 28);
+    toolNameBubble_->watch(
+        help,
+        QStringLiteral("Help"),
+        QStringLiteral("Shift+/"),
+        QStringLiteral("Keyboard shortcuts and FreeShape documentation")
+    );
     documentToolbar_->addWidget(help);
 
     addToolBar(Qt::TopToolBarArea, documentToolbar_);
 
+    auto makeIconButton = [this](
+        QToolBar* toolbar,
+        const QString& iconId,
+        const QString& title,
+        const QString& shortcut,
+        const QString& detail,
+        std::function<void()> callback,
+        bool checkable = false,
+        const QString& objectName = {}
+    ) {
+        auto* button = new QToolButton(toolbar);
+        button->setIcon(freeshape::ui::ToolIconFactory::icon(iconId));
+        button->setIconSize(QSize(25, 25));
+        button->setFixedSize(40, 36);
+        button->setAutoRaise(true);
+        button->setCheckable(checkable);
+        if (!objectName.isEmpty()) {
+            button->setObjectName(objectName);
+        }
+
+        toolNameBubble_->watch(button, title, shortcut, detail);
+
+        QObject::connect(button, &QToolButton::clicked, this, [callback = std::move(callback)] {
+            callback();
+        });
+
+        toolbar->addWidget(button);
+        return button;
+    };
+
+    auto addCommandIcon = [&](QToolBar* toolbar,
+                              const QString& iconId,
+                              const QString& commandId,
+                              const QString& detail = {},
+                              bool checkable = false) {
+        QAction* action = commands_->action(commandId);
+        const QString title = action != nullptr ? action->text() : commandId;
+        const QString shortcut = action != nullptr
+            ? action->shortcut().toString(QKeySequence::NativeText)
+            : QString();
+        return makeIconButton(
+            toolbar,
+            iconId,
+            title,
+            shortcut,
+            detail,
+            [this, commandId] { commands_->trigger(commandId); },
+            checkable,
+            QStringLiteral("tool_") + commandId
+        );
+    };
+
+    auto addPassiveIcon = [&](QToolBar* toolbar,
+                              const QString& iconId,
+                              const QString& title,
+                              const QString& detail = {}) {
+        return makeIconButton(
+            toolbar,
+            iconId,
+            title,
+            {},
+            detail,
+            [this, title] {
+                showToast(title + QStringLiteral(" · implementation is on the active roadmap"));
+            }
+        );
+    };
+
+    // ---------------------------------------------------------------------
+    // Part Studio feature toolbar
+    // ---------------------------------------------------------------------
     featureToolbar_ = new QToolBar(this);
     featureToolbar_->setObjectName(QStringLiteral("FeatureBar"));
     featureToolbar_->setMovable(false);
     featureToolbar_->setFloatable(false);
 
-    auto addCommandButton = [&](const QString& commandId, const QString& text) {
-        auto* button = new QToolButton(featureToolbar_);
-        button->setText(text);
-        button->setToolTip(commands_->action(commandId)->text()
-                           + QStringLiteral("  ")
-                           + commands_->action(commandId)->shortcut().toString());
-        QObject::connect(button, &QToolButton::clicked, this, [this, commandId] {
-            commands_->trigger(commandId);
-        });
-        featureToolbar_->addWidget(button);
-    };
-
-    addCommandButton(QStringLiteral("sketch"), QStringLiteral("✎ Sketch"));
+    addCommandIcon(
+        featureToolbar_,
+        QStringLiteral("sketch"),
+        QStringLiteral("sketch"),
+        QStringLiteral("Create or edit a sketch")
+    );
     featureToolbar_->addSeparator();
-    addCommandButton(QStringLiteral("extrude"), QStringLiteral("▰ Extrude"));
-    featureToolbar_->addWidget(new QToolButton(featureToolbar_));
 
-    const QStringList passiveFeatures = {
-        QStringLiteral("Revolve"),
-        QStringLiteral("Sweep"),
-        QStringLiteral("Loft"),
-        QStringLiteral("Hole"),
-        QStringLiteral("Chamfer"),
-        QStringLiteral("Shell"),
-        QStringLiteral("Draft"),
-        QStringLiteral("Pattern"),
-        QStringLiteral("Mirror"),
-        QStringLiteral("Boolean"),
-        QStringLiteral("Transform")
-    };
+    addCommandIcon(
+        featureToolbar_,
+        QStringLiteral("extrude"),
+        QStringLiteral("extrude"),
+        QStringLiteral("Create, add, remove, or intersect material")
+    );
+    addPassiveIcon(featureToolbar_, QStringLiteral("revolve"), QStringLiteral("Revolve"));
+    addPassiveIcon(featureToolbar_, QStringLiteral("sweep"), QStringLiteral("Sweep"));
+    addPassiveIcon(featureToolbar_, QStringLiteral("loft"), QStringLiteral("Loft"));
 
-    const QStringList passiveGlyphs = {
-        QStringLiteral("↻"), QStringLiteral("⌁"), QStringLiteral("⌃"),
-        QStringLiteral("◉"), QStringLiteral("◩"), QStringLiteral("▣"),
-        QStringLiteral("⌂"), QStringLiteral("⋮"), QStringLiteral("⇋"),
-        QStringLiteral("∩"), QStringLiteral("✥")
-    };
+    featureToolbar_->addSeparator();
 
-    for (int i = 0; i < passiveFeatures.size(); ++i) {
-        auto* button = new QToolButton(featureToolbar_);
-        button->setText(passiveGlyphs.value(i, QStringLiteral("◇")));
-        button->setFixedSize(34, 30);
-        button->setToolTip(passiveFeatures[i] + QStringLiteral(" — feature command"));
-        featureToolbar_->addWidget(button);
-    }
+    addPassiveIcon(featureToolbar_, QStringLiteral("hole"), QStringLiteral("Hole"));
+    addCommandIcon(
+        featureToolbar_,
+        QStringLiteral("fillet"),
+        QStringLiteral("fillet"),
+        QStringLiteral("Round selected edges")
+    );
+    addPassiveIcon(featureToolbar_, QStringLiteral("chamfer"), QStringLiteral("Chamfer"));
+    addPassiveIcon(featureToolbar_, QStringLiteral("shell"), QStringLiteral("Shell"));
+    addPassiveIcon(featureToolbar_, QStringLiteral("draft"), QStringLiteral("Draft"));
 
-    addCommandButton(QStringLiteral("fillet"), QStringLiteral("Fillet"));
+    featureToolbar_->addSeparator();
+
+    addPassiveIcon(featureToolbar_, QStringLiteral("pattern"), QStringLiteral("Pattern"));
+    addPassiveIcon(featureToolbar_, QStringLiteral("mirror"), QStringLiteral("Mirror"));
+    addPassiveIcon(featureToolbar_, QStringLiteral("boolean"), QStringLiteral("Boolean"));
+    addPassiveIcon(featureToolbar_, QStringLiteral("transform"), QStringLiteral("Transform"));
 
     addToolBar(Qt::TopToolBarArea, featureToolbar_);
 
+    // ---------------------------------------------------------------------
+    // Sketch toolbar. Onshape keeps Extrude/Revolve directly available while
+    // sketching, then switches the rest of the toolbar to sketch tools.
+    // ---------------------------------------------------------------------
     sketchToolbar_ = new QToolBar(this);
     sketchToolbar_->setObjectName(QStringLiteral("SketchBar"));
     sketchToolbar_->setMovable(false);
     sketchToolbar_->setFloatable(false);
 
-    auto addSketchCommand = [&](const QString& commandId, const QString& glyph, const QString& tip) {
-        auto* button = new QToolButton(sketchToolbar_);
-        button->setText(glyph);
-        button->setFixedSize(34, 30);
-        button->setToolTip(tip);
-        QObject::connect(button, &QToolButton::clicked, this, [this, commandId] {
-            commands_->trigger(commandId);
-        });
-        sketchToolbar_->addWidget(button);
-    };
+    addCommandIcon(
+        sketchToolbar_,
+        QStringLiteral("extrude"),
+        QStringLiteral("extrude"),
+        QStringLiteral("Accept the current sketch and extrude its closed regions")
+    );
+    addPassiveIcon(
+        sketchToolbar_,
+        QStringLiteral("revolve"),
+        QStringLiteral("Revolve"),
+        QStringLiteral("Accept the current sketch and revolve a region")
+    );
 
-    addSketchCommand(QStringLiteral("sketch_line"), QStringLiteral("╱"), QStringLiteral("Line  L"));
-    addSketchCommand(QStringLiteral("sketch_circle"), QStringLiteral("○"), QStringLiteral("Center point circle  C"));
-    addSketchCommand(QStringLiteral("sketch_rectangle"), QStringLiteral("□"), QStringLiteral("Corner rectangle  G"));
+    sketchToolbar_->addSeparator();
 
-    for (const auto& passive : {
-             std::pair<QString, QString>{QStringLiteral("⌒"), QStringLiteral("3-point arc  A")},
-             {QStringLiteral("↔"), QStringLiteral("Dimension  D")},
-             {QStringLiteral("┄"), QStringLiteral("Construction  Q")},
-             {QStringLiteral("✂"), QStringLiteral("Trim  M")},
-             {QStringLiteral("↗"), QStringLiteral("Use / project  U")}
-         }) {
-        auto* button = new QToolButton(sketchToolbar_);
-        button->setText(passive.first);
-        button->setFixedSize(34, 30);
-        button->setToolTip(passive.second);
-        sketchToolbar_->addWidget(button);
-    }
+    addCommandIcon(
+        sketchToolbar_,
+        QStringLiteral("line"),
+        QStringLiteral("sketch_line"),
+        QStringLiteral("Click endpoints to create connected line segments"),
+        true
+    );
+    addCommandIcon(
+        sketchToolbar_,
+        QStringLiteral("circle"),
+        QStringLiteral("sketch_circle"),
+        QStringLiteral("Click center, then radius"),
+        true
+    );
+    addCommandIcon(
+        sketchToolbar_,
+        QStringLiteral("rectangle"),
+        QStringLiteral("sketch_rectangle"),
+        QStringLiteral("Click opposite corners"),
+        true
+    );
+    addCommandIcon(
+        sketchToolbar_,
+        QStringLiteral("center_rectangle"),
+        QStringLiteral("sketch_center_rectangle"),
+        QStringLiteral("Click center, then a corner"),
+        true
+    );
+
+    sketchToolbar_->addSeparator();
+
+    addPassiveIcon(sketchToolbar_, QStringLiteral("arc"), QStringLiteral("3-point arc"),
+                   QStringLiteral("Shortcut A"));
+    addPassiveIcon(sketchToolbar_, QStringLiteral("spline"), QStringLiteral("Spline"));
+
+    sketchToolbar_->addSeparator();
+
+    addPassiveIcon(sketchToolbar_, QStringLiteral("dimension"), QStringLiteral("Dimension"),
+                   QStringLiteral("Shortcut D"));
+    addPassiveIcon(sketchToolbar_, QStringLiteral("construction"), QStringLiteral("Construction"),
+                   QStringLiteral("Shortcut Q"));
+    addPassiveIcon(sketchToolbar_, QStringLiteral("trim"), QStringLiteral("Trim"),
+                   QStringLiteral("Shortcut M"));
+    addPassiveIcon(sketchToolbar_, QStringLiteral("use"), QStringLiteral("Use / project"),
+                   QStringLiteral("Shortcut U"));
+    addPassiveIcon(sketchToolbar_, QStringLiteral("offset"), QStringLiteral("Offset"),
+                   QStringLiteral("Shortcut O"));
+    addPassiveIcon(sketchToolbar_, QStringLiteral("constraints"), QStringLiteral("Constraints"));
 
     addToolBar(Qt::TopToolBarArea, sketchToolbar_);
     sketchToolbar_->hide();
@@ -1019,21 +1218,46 @@ void FreeShapeWindow::showViewportContextMenu(const QPoint& globalPosition)
 {
     QMenu menu(this);
 
-    menu.addAction(QStringLiteral("Sketch"), [this] {
-        showSketchCommand();
-    });
-    menu.addAction(QStringLiteral("Extrude"), [this] {
-        showExtrudeCommand();
-    });
-    menu.addAction(QStringLiteral("Fillet"), [this] {
-        showFilletCommand();
-    });
+    const QString datum = !preselectedDatumPlane().isEmpty()
+        ? preselectedDatumPlane()
+        : selectedDatumPlane();
 
-    menu.addSeparator();
+    if (!datum.isEmpty()) {
+        const QString semantic = semanticPlaneName(datum);
+        menu.addAction(
+            QStringLiteral("New sketch on %1").arg(semantic),
+            [this, datum] {
+                showSketchCommand();
+                if (sketchController_ != nullptr
+                    && sketchController_->isAwaitingPlane()
+                    && sketchController_->selectPlane(datum)) {
+                    featurePopup_->setSelectionText(semanticPlaneName(datum));
+                    setReferencePlanesVisible(false);
+                    updateToolbarContext(true);
+                    refreshPartStudio();
+                }
+            }
+        );
 
-    menu.addAction(QStringLiteral("View normal to"), [this] {
-        normalToSelectionOrPlane();
-    });
+        menu.addAction(
+            QStringLiteral("View normal to %1").arg(semantic),
+            [this] { normalToSelectionOrPlane(); }
+        );
+        menu.addSeparator();
+    }
+    else {
+        menu.addAction(QStringLiteral("Sketch"), [this] {
+            showSketchCommand();
+        });
+        menu.addAction(QStringLiteral("Extrude"), [this] {
+            showExtrudeCommand();
+        });
+        menu.addAction(QStringLiteral("Fillet"), [this] {
+            showFilletCommand();
+        });
+        menu.addSeparator();
+    }
+
     menu.addAction(QStringLiteral("Zoom to fit"), [this] {
         commands_->trigger(QStringLiteral("fit"));
     });
@@ -1045,6 +1269,9 @@ void FreeShapeWindow::showViewportContextMenu(const QPoint& globalPosition)
 
     menu.addAction(QStringLiteral("Hide"), [this] {
         hideSelected();
+    });
+    menu.addAction(QStringLiteral("Show reference planes"), [this] {
+        setReferencePlanesVisible(true);
     });
     menu.addAction(QStringLiteral("Clear selection"), [] {
         Gui::Selection().clearCompleteSelection();
@@ -1156,11 +1383,19 @@ void FreeShapeWindow::hideSelected()
 {
     lastHiddenObjects_.clear();
 
-    for (const auto& selected : Gui::Selection().getSelection()) {
-        if (selected.FeatName == nullptr) {
+    const auto selected = Gui::Selection().getSelection();
+    for (const auto& item : selected) {
+        if (item.FeatName == nullptr) {
             continue;
         }
-        const std::string name = selected.FeatName;
+
+        const QString object = QString::fromUtf8(item.FeatName);
+        const QString sub = QString::fromUtf8(item.SubName != nullptr ? item.SubName : "");
+        const QString plane = datumPlaneFromSelection(object, sub);
+        const std::string name = !plane.isEmpty()
+            ? plane.toStdString()
+            : object.toStdString();
+
         if (std::find(lastHiddenObjects_.begin(), lastHiddenObjects_.end(), name)
             == lastHiddenObjects_.end()) {
             lastHiddenObjects_.push_back(name);
@@ -1168,9 +1403,23 @@ void FreeShapeWindow::hideSelected()
         }
     }
 
+    // Onshape's Y shortcut also acts on the entity under the cursor. Use the
+    // live preselection when there is no explicit selection.
+    if (lastHiddenObjects_.empty() && !lastPreselectionObject_.isEmpty()) {
+        const QString plane = datumPlaneFromSelection(
+            lastPreselectionObject_,
+            lastPreselectionSubElement_
+        );
+        const std::string name = !plane.isEmpty()
+            ? plane.toStdString()
+            : lastPreselectionObject_.toStdString();
+        lastHiddenObjects_.push_back(name);
+        guiDocument_->setHide(name.c_str());
+    }
+
     if (!lastHiddenObjects_.empty()) {
         Gui::Selection().clearCompleteSelection();
-        showToast(QStringLiteral("Hidden selected entities"));
+        showToast(QStringLiteral("Hidden"));
     }
 }
 
@@ -1244,46 +1493,89 @@ void FreeShapeWindow::acceptSelectOtherCandidate(
     refreshSelectionUi();
 }
 
-void FreeShapeWindow::normalToSelectionOrPlane()
+QString FreeShapeWindow::selectedDatumPlane() const
 {
     const auto selected = Gui::Selection().getSelection();
     if (selected.empty()) {
-        showToast(QStringLiteral("Normal to · select or hover a plane/face"));
-        return;
+        return {};
     }
 
-    const std::string object =
-        selected.back().FeatName != nullptr ? selected.back().FeatName : "";
+    const auto& item = selected.back();
+    return datumPlaneFromSelection(
+        QString::fromUtf8(item.FeatName != nullptr ? item.FeatName : ""),
+        QString::fromUtf8(item.SubName != nullptr ? item.SubName : "")
+    );
+}
+
+QString FreeShapeWindow::preselectedDatumPlane() const
+{
+    return datumPlaneFromSelection(
+        lastPreselectionObject_,
+        lastPreselectionSubElement_
+    );
+}
+
+void FreeShapeWindow::normalToSelectionOrPlane()
+{
+    QString plane = preselectedDatumPlane();
+    if (plane.isEmpty()) {
+        plane = selectedDatumPlane();
+    }
 
     const char* message = nullptr;
-    if (object == "XY_Plane") {
+    if (plane == QStringLiteral("XY_Plane")) {
         message = "ViewTop";
     }
-    else if (object == "XZ_Plane") {
+    else if (plane == QStringLiteral("XZ_Plane")) {
         message = "ViewFront";
     }
-    else if (object == "YZ_Plane") {
+    else if (plane == QStringLiteral("YZ_Plane")) {
         message = "ViewRight";
     }
 
     if (message != nullptr) {
         guiDocument_->sendMsgToViews(message);
-        showToast(QStringLiteral("View normal to selected datum plane"));
-    }
-    else {
         showToast(
-            QStringLiteral("Normal-to arbitrary face is queued for ViewportInput pass 2"),
-            3200
+            QStringLiteral("View normal to %1").arg(semanticPlaneName(plane))
         );
+        return;
     }
+
+    showToast(QStringLiteral("Normal to · hover or select a planar face/plane"));
 }
 
 void FreeShapeWindow::refreshSelectionUi()
 {
-    const int count = static_cast<int>(Gui::Selection().getSelection().size());
+    const auto selection = Gui::Selection().getSelection();
+    const int count = static_cast<int>(selection.size());
+
     if (selectionOverlay_ != nullptr) {
         selectionOverlay_->setSelectionCount(count);
     }
+
+    if (featurePopup_ != nullptr && featurePopup_->isVisible()
+        && featurePopup_->mode() != freeshape::ui::FeaturePopup::Mode::Sketch) {
+        QStringList labels;
+        for (const auto& item : selection) {
+            const QString object =
+                QString::fromUtf8(item.FeatName != nullptr ? item.FeatName : "");
+            const QString sub =
+                QString::fromUtf8(item.SubName != nullptr ? item.SubName : "");
+            labels.push_back(semanticSelectionText(object, sub));
+            if (labels.size() == 3 && selection.size() > 3) {
+                labels.push_back(
+                    QStringLiteral("+%1 more").arg(selection.size() - 3)
+                );
+                break;
+            }
+        }
+
+        featurePopup_->setEntitySelectionText(
+            labels.isEmpty() ? QStringLiteral("Select entities")
+                             : labels.join(QStringLiteral(", "))
+        );
+    }
+
     if (measurementHud_ != nullptr) {
         measurementHud_->refresh();
         measurementHud_->move(
@@ -1324,11 +1616,46 @@ void FreeShapeWindow::updateToolbarContext(bool sketchMode)
         for (const QString& id : {
                  QStringLiteral("sketch_circle"),
                  QStringLiteral("sketch_line"),
-                 QStringLiteral("sketch_rectangle")
+                 QStringLiteral("sketch_rectangle"),
+                 QStringLiteral("sketch_center_rectangle")
              }) {
             if (auto* action = commands_->action(id); action != nullptr) {
                 action->setEnabled(sketchMode);
             }
+        }
+    }
+
+    syncActiveToolButtons();
+}
+
+void FreeShapeWindow::syncActiveToolButtons()
+{
+    if (sketchToolbar_ == nullptr || sketchController_ == nullptr) {
+        return;
+    }
+
+    using Tool = freeshape::sketch::SketchController::Tool;
+    const Tool active = sketchController_->activeTool();
+
+    struct State {
+        const char* objectName;
+        Tool tool;
+    };
+
+    const State states[] = {
+        {"tool_sketch_line", Tool::Line},
+        {"tool_sketch_circle", Tool::Circle},
+        {"tool_sketch_rectangle", Tool::CornerRectangle},
+        {"tool_sketch_center_rectangle", Tool::CenterRectangle},
+    };
+
+    for (const auto& state : states) {
+        if (auto* button = sketchToolbar_->findChild<QToolButton*>(
+                QString::fromUtf8(state.objectName));
+            button != nullptr) {
+            button->blockSignals(true);
+            button->setChecked(active == state.tool);
+            button->blockSignals(false);
         }
     }
 }

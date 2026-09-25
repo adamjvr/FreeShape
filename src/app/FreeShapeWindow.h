@@ -44,6 +44,7 @@ class SelectionOverlay;
 class SelectOtherPopup;
 class MeasurementHud;
 class ReferenceGeometryOverlay;
+class ToolNameBubble;
 }
 
 namespace freeshape::app {
@@ -89,6 +90,9 @@ private:
     void refreshSelectOtherCandidates();
     void showToast(const QString& text, int milliseconds = 2800);
     void updateToolbarContext(bool sketchMode);
+    void syncActiveToolButtons();
+    QString selectedDatumPlane() const;
+    QString preselectedDatumPlane() const;
 
     App::Document* document_ = nullptr;
     Gui::Document* guiDocument_ = nullptr;
@@ -110,6 +114,7 @@ private:
     freeshape::ui::SelectOtherPopup* selectOtherPopup_ = nullptr;
     freeshape::ui::MeasurementHud* measurementHud_ = nullptr;
     freeshape::ui::ReferenceGeometryOverlay* referenceOverlay_ = nullptr;
+    freeshape::ui::ToolNameBubble* toolNameBubble_ = nullptr;
 
     std::unique_ptr<freeshape::commands::CommandRegistry> commands_;
     std::unique_ptr<Gui::SelectionObserver> selectionObserver_;
@@ -123,6 +128,8 @@ private:
     std::vector<std::string> lastHiddenObjects_;
     std::size_t selectOtherIndex_ = 0;
     QPoint lastViewportCursor_;
+    QString lastPreselectionObject_;
+    QString lastPreselectionSubElement_;
 };
 
 }  // namespace freeshape::app

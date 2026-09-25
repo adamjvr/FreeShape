@@ -102,6 +102,22 @@ void ReferenceGeometryOverlay::updateLabels()
 
     for (const auto& placement : placements) {
         placement.label->adjustSize();
+
+        // Never clamp an off-screen 3D label to a random viewport edge. That
+        // looked like a toolbar tooltip in the screencast. If the actual
+        // reference anchor is off screen, the semantic label is hidden.
+        const QRect safe = rect().adjusted(
+            -placement.label->width(),
+            -placement.label->height(),
+            placement.label->width(),
+            placement.label->height()
+        );
+        if (!safe.contains(placement.point)) {
+            placement.label->hide();
+            continue;
+        }
+
+        placement.label->show();
         const int x = std::clamp(
             placement.point.x() - placement.label->width() / 2,
             4,

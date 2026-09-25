@@ -70,6 +70,24 @@ void SketchOverlay::setRectanglePreview(
     update();
 }
 
+void SketchOverlay::setCenterRectanglePreview(
+    const QPoint& center,
+    const QPoint& corner,
+    bool snapX,
+    bool snapY
+)
+{
+    center_ = center;
+    edge_ = corner;
+    snapX_ = snapX;
+    snapY_ = snapY;
+    previewKind_ = PreviewKind::CenterRectangle;
+    previewVisible_ = true;
+    show();
+    raise();
+    update();
+}
+
 void SketchOverlay::clearPreview()
 {
     previewKind_ = PreviewKind::None;
@@ -108,6 +126,13 @@ void SketchOverlay::paintEvent(QPaintEvent* event)
         case PreviewKind::Rectangle:
             painter.drawRect(QRect(center_, edge_).normalized());
             break;
+        case PreviewKind::CenterRectangle: {
+            const QPoint delta = edge_ - center_;
+            painter.drawRect(
+                QRect(center_ - delta, center_ + delta).normalized()
+            );
+            break;
+        }
         case PreviewKind::None:
             break;
     }

@@ -145,3 +145,23 @@ selection-count feedback, directional box selection, Ctrl-box subtraction,
 Select Other candidate UI, measurement HUD, movable/resizable dialogs, and the
 first Line/Corner Rectangle sketch tools. Remaining work should deepen these
 systems rather than bypassing them with FreeCAD-visible commands.
+
+
+## Toolbar discoverability
+
+Icon-only toolbar controls must not depend on memorized glyphs. Every tool icon
+has a short-delay hover bubble containing its canonical name, shortcut when
+present, and a one-line interaction hint. Icons target roughly 25px artwork
+inside a 40x36px hit area on desktop.
+
+## Tool state
+
+A sketch tool is a persistent mode. Activating the same tool again exits it.
+Escape exits the active tool before cancelling the containing Sketch command.
+The toolbar visibly indicates which tool is latched.
+
+## Semantic engine selections
+
+Engine selection paths are normalized before they reach product UX. For
+example, a FreeCAD nested pick `Body / Origin.XY_Plane.` is exposed as `Top`,
+not as an implementation path.

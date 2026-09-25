@@ -37,7 +37,8 @@ public:
         None,
         Circle,
         Line,
-        CornerRectangle
+        CornerRectangle,
+        CenterRectangle
     };
 
     SketchController(
@@ -55,10 +56,12 @@ public:
     bool isAwaitingPlane() const;
     bool isEditing() const;
     bool hasClosedProfile() const;
+    Tool activeTool() const;
 
     void activateCircle();
     void activateLine();
     void activateCornerRectangle();
+    void activateCenterRectangle();
     void cancelActiveTool();
 
     bool handleMousePress(const QPoint& viewportPosition, Qt::MouseButton button);

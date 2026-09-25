@@ -147,6 +147,11 @@ bool SketchController::hasClosedProfile() const
     return geometryCount_ > 0;
 }
 
+SketchController::Tool SketchController::activeTool() const
+{
+    return tool_;
+}
+
 void SketchController::activateCircle()
 {
     if (state_ != State::Editing) {
@@ -154,13 +159,20 @@ void SketchController::activateCircle()
         return;
     }
 
+    if (tool_ == Tool::Circle) {
+        cancelActiveTool();
+        return;
+    }
+
     tool_ = Tool::Circle;
     circleCenter_.reset();
+    firstPoint_.reset();
     overlay_->clearPreview();
     numericInput_->hide();
     pendingDiameterGeometry_ = -1;
 
     emitMessage(QStringLiteral("Circle · click center, then click radius"));
+    emitChanged();
 }
 
 void SketchController::activateLine()
@@ -170,11 +182,18 @@ void SketchController::activateLine()
         return;
     }
 
+    if (tool_ == Tool::Line) {
+        cancelActiveTool();
+        return;
+    }
+
     tool_ = Tool::Line;
+    circleCenter_.reset();
     firstPoint_.reset();
     overlay_->clearPreview();
     numericInput_->hide();
     emitMessage(QStringLiteral("Line · click start, then click end"));
+    emitChanged();
 }
 
 void SketchController::activateCornerRectangle()
@@ -184,11 +203,39 @@ void SketchController::activateCornerRectangle()
         return;
     }
 
+    if (tool_ == Tool::CornerRectangle) {
+        cancelActiveTool();
+        return;
+    }
+
     tool_ = Tool::CornerRectangle;
+    circleCenter_.reset();
     firstPoint_.reset();
     overlay_->clearPreview();
     numericInput_->hide();
     emitMessage(QStringLiteral("Corner rectangle · click first corner, then opposite corner"));
+    emitChanged();
+}
+
+void SketchController::activateCenterRectangle()
+{
+    if (state_ != State::Editing) {
+        emitMessage(QStringLiteral("Center rectangle requires an active sketch"));
+        return;
+    }
+
+    if (tool_ == Tool::CenterRectangle) {
+        cancelActiveTool();
+        return;
+    }
+
+    tool_ = Tool::CenterRectangle;
+    circleCenter_.reset();
+    firstPoint_.reset();
+    overlay_->clearPreview();
+    numericInput_->hide();
+    emitMessage(QStringLiteral("Center rectangle · click center, then a corner"));
+    emitChanged();
 }
 
 void SketchController::cancelActiveTool()
@@ -200,6 +247,7 @@ void SketchController::cancelActiveTool()
     pendingDiameterGeometry_ = -1;
     tool_ = Tool::None;
     emitMessage(QStringLiteral("Sketch tool cancelled"));
+    emitChanged();
 }
 
 bool SketchController::handleMousePress(
@@ -267,11 +315,15 @@ bool SketchController::handleMousePress(
         firstPointScreen_ = viewportPosition;
         centerSnapX_ = snapX;
         centerSnapY_ = snapY;
-        emitMessage(
-            tool_ == Tool::Line
-                ? QStringLiteral("Line start set · click end")
-                : QStringLiteral("Rectangle corner set · click opposite corner")
-        );
+        if (tool_ == Tool::Line) {
+            emitMessage(QStringLiteral("Line start set · click end"));
+        }
+        else if (tool_ == Tool::CenterRectangle) {
+            emitMessage(QStringLiteral("Rectangle center set · click a corner"));
+        }
+        else {
+            emitMessage(QStringLiteral("Rectangle corner set · click opposite corner"));
+        }
         return true;
     }
 
@@ -285,6 +337,30 @@ bool SketchController::handleMousePress(
         firstPointScreen_ = viewportPosition;
         overlay_->clearPreview();
         emitMessage(QStringLiteral("Line created · continue line, or Esc to stop"));
+        return true;
+    }
+
+    if (tool_ == Tool::CenterRectangle) {
+        const QPointF center = *firstPoint_;
+        const double dx = std::abs(inferred.x() - center.x());
+        const double dy = std::abs(inferred.y() - center.y());
+
+        if (dx < 1.0e-6 || dy < 1.0e-6) {
+            emitMessage(QStringLiteral("Rectangle is too small"));
+            return true;
+        }
+
+        const QPointF first(center.x() - dx, center.y() - dy);
+        const QPointF opposite(center.x() + dx, center.y() + dy);
+        const int created = createRectangle(first, opposite);
+        if (created >= 0) {
+            geometryCount_ += 4;
+            emitChanged();
+        }
+
+        firstPoint_.reset();
+        overlay_->clearPreview();
+        emitMessage(QStringLiteral("Center rectangle created · draw another, or Shift+E to extrude"));
         return true;
     }
 
@@ -324,6 +400,14 @@ void SketchController::handleMouseMove(const QPoint& viewportPosition)
     if (firstPoint_.has_value()) {
         if (tool_ == Tool::Line) {
             overlay_->setLinePreview(
+                firstPointScreen_,
+                viewportPosition,
+                centerSnapX_,
+                centerSnapY_
+            );
+        }
+        else if (tool_ == Tool::CenterRectangle) {
+            overlay_->setCenterRectanglePreview(
                 firstPointScreen_,
                 viewportPosition,
                 centerSnapX_,
